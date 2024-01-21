@@ -1,0 +1,16 @@
+<?php
+
+namespace App\Http\Livewire\Admin;
+
+use Livewire\Component;
+use Auth;
+
+class Dashboard extends Component
+{
+    public function render()
+    {
+        // dd(Auth::user());
+        return view('livewire.admin.dashboard')
+            ->layout('layouts.admin');
+    }
+}

@@ -1,0 +1,53 @@
+<?php
+
+namespace App\Http\Livewire\Admin;
+
+use Livewire\Component;
+use Auth;
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+
+class Login extends Component
+{
+    protected $rules = [
+        'form.email' => 'required|min:3',
+        'form.password' => 'required|min:3',
+    ];
+
+    public $form = [
+        'email' => '',
+        'password' => ''
+    ];
+    /**
+     * Check if any login exists
+     */
+    public function mount()
+    {
+        if (Auth::check()) {
+            return redirect()->to('/admin/dashboard');
+        }
+    }
+    /**
+     * Login user with credentials
+     */
+    public function doLogin()
+    {
+        $data = $this->validate();
+        $user = User::where('email', $this->form['email'])->first();
+        if ($user) {
+            if (Auth::guard($user->role)->attempt(['email' => $this->form['email'], 'password' => $this->form['password']])) {
+                Auth::loginUsingId($user->id, TRUE);
+                session()->flash('message', ['success' => 'Registration is success. Please check you email']);
+                return redirect()->to('/admin/dashboard');
+            }
+        }
+        session()->flash('message', ['danger' => 'Username or Password is wrong']);
+        return redirect()->back();
+    }
+
+    public function render()
+    {
+        return view('livewire.admin.login')
+            ->layout('layouts.admin-login');;
+    }
+}

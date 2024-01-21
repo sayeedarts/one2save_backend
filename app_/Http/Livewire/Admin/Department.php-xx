@@ -1,0 +1,185 @@
+<?php
+
+namespace App\Http\Livewire\Admin;
+
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+use Interven;
+use Livewire\Component;
+use Livewire\WithFileUploads;
+use Livewire\WithPagination;
+use App\Models\Department as DepartmentModel;
+use App\Models\DepartmentFeature;
+use \Cviebrock\EloquentSluggable\Services\SlugService;
+
+class Department extends Component
+{
+    use WithPagination;
+    use WithFileUploads;
+
+    public $routeName;
+    public $photo;
+    public $feature;
+    public $selectedFeatures;
+    public $loops = [];
+    public $i = 1;
+    public $departments;
+    public $dimension = [263 => 202, 750 => 400];
+    public $form = [
+        'name' => '',
+        'details' => '',
+        'image' => '',
+    ];
+    protected $rules = [
+        'form.name' => 'required|min:3',
+        'form.details' => 'required|min:3',
+        'form.image' => 'image|max:2048',
+    ];
+    public $required = '<span class="text-danger">*</span>';
+
+    public function add($i)
+    {
+        $i = $i + 1;
+        $this->i = $i;
+        array_push($this->loops, $i);
+    }
+
+    public function remnoveFeature()
+    {
+        
+    }
+    /**
+     * Save Department Details
+     */
+    public function saveDepartment()
+    {
+        $featuresData = [];
+
+        $data = $this->validate();
+        $this->form['image'] = $this->upload($this->photo);
+        $department = DepartmentModel::create($this->form);
+        // Get relevant Features details
+        if (!empty($this->feature)) {
+            foreach ($this->feature as $feature) {
+                $featuresData[] = [
+                    'title' => $feature['title'],
+                    'details' => $feature['details'],
+                    'photo' => $this->upload($feature['photo'], [100 => 100])
+                ];
+            }
+            $department->features()->createMany($featuresData);
+        }
+        $this->form = [];
+        session()->flash('message', ['success' => 'Department is saved']);
+        return redirect()->back();
+    }
+
+    /**
+     * Update Department Details
+     */
+    public function updateDepartment()
+    {
+        if ($this->photo) {
+            $this->form['image'] = $this->upload($this->photo);
+        }
+        $updateData = \Arr::except($this->form, ['created_at', 'updated_at', 'features', 'slug']);
+        $df = DepartmentModel::where('id', $this->form['id'])->update($updateData);
+        
+        // Get relevant Features details
+        if (!empty($this->feature)) {
+            foreach ($this->feature as $feature) {
+                $featuresData[] = [
+                    'title' => $feature['title'],
+                    'details' => $feature['details'],
+                    'photo' => $this->upload($feature['photo'], [100 => 100])
+                ];
+            }
+            $department = DepartmentModel::find($this->form['id']);
+            $department->features()->createMany($featuresData);
+
+            $features = DepartmentFeature::where('department_id', $this->form['id']);
+            $this->selectedFeatures = $features->get()->toArray();
+        }
+
+        session()->flash('message', ['success' => 'Department is updated']);
+        return redirect()->back();
+    }
+
+    public function slug()
+    {
+        return SlugService::createSlug(DepartmentModel::class, 'slug', $this->form['name']);
+    }
+
+    public function delete($id = null)
+    {
+        $department = DepartmentModel::find($id);
+        $department->delete();
+        session()->flash('message', ['warning' => 'Department is deleted']);
+        return redirect()->route('list-department');
+    }
+
+    public function deleteFeature($id)
+    {
+        $feature = DepartmentFeature::find($id);
+        $feature->delete();
+        $feature->refresh();
+        $this->selectedFeatures = $feature->get()->toArray();
+    }
+    /**
+     * Upload Image and return its path
+     */
+    protected function fileUpload()
+    {
+        if ($this->photo) {
+            $fileInstance = Storage::putFile('public', $this->photo);
+            $fileContents = Storage::url($fileInstance);
+            $convertImg = Interven::make(public_path($fileContents))->resize(
+                $this->dimension['width'],
+                $this->dimension['height']
+            );
+            $imagePath = $convertImg->save();
+            if ($imagePath->basename) {
+                return $imagePath->basename;
+            }
+        }
+        return null;
+    }
+
+    protected function upload($file, $resolution = [])
+    {
+        $fileName = "";
+        if ($file) {
+            $activeDim = !empty($resolution) ? $resolution : $this->dimension;
+            // calculate md5 hash of encoded image
+            $fileName = md5($file->__toString());
+            foreach ($activeDim as $width => $height) {
+                $convertImg = Interven::make($file)->resize($width, $height)->encode('jpg');
+                // use hash as a name
+                $path = "uploads/{$width}x{$height}_{$fileName}.jpg";
+                // save it locally to ~/public/images/{$hash}.jpg
+                $convertImg->save(public_path($path));
+            }
+            return $fileName;
+        }
+        return null;
+    }
+
+    public function mount($id = null)
+    {
+        if ($id) {
+            $departmentInfo = DepartmentModel::where('id', $id)->with('features')->first()->toArray();
+            $this->form = $departmentInfo;
+            $this->selectedFeatures = $departmentInfo['features'];
+            // dd($departmentInfo['features']);
+        }
+        $this->routeName = Route::getFacadeRoot()->current()->action['as'];
+        if ($this->routeName == "list-department") {
+            $this->departments = DepartmentModel::get();
+        }
+    }
+    public function render()
+    {
+        return view('livewire.admin.department')
+            ->layout('layouts.admin');
+    }
+}
